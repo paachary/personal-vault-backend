@@ -1,0 +1,60 @@
+services:
+  mongodb:
+    image: mongo:7
+    container_name: personal-vault-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGO_DB_NAME:-personal_vault}
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - personal-vault-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  backend:
+    image: ghcr.io/paachary/personal-vault-backend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: personal-vault-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      - MONGO_DB_HOST=mongodb
+      - MONGO_DB_PORT=27017
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3007}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - personal-vault-network
+
+  frontend:
+    image: ghcr.io/paachary/personal-vault-frontend:latest
+    container_name: personal-vault-frontend
+    restart: unless-stopped
+    ports:
+      - "3007:3007"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+    depends_on:
+      - backend
+    networks:
+      - personal-vault-network
+
+volumes:
+  mongodb_data:
+    name: personal-vault-mongodb-data
+
+networks:
+  personal-vault-network:
+    name: personal-vault-network
+    driver: bridge

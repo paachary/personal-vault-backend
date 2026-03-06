@@ -1,0 +1,131 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE: ghcr.io/${{ github.repository_owner }}/personal-vault-backend
+  FRONTEND_IMAGE: ghcr.io/${{ github.repository_owner }}/personal-vault-frontend
+
+jobs:
+  # -------------------------------------------------------
+  # Job 1: Build & Test the Go backend on every push/PR
+  # -------------------------------------------------------
+  build-and-test:
+    name: Build and Test Backend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Build
+        run: go build -v ./...
+
+      - name: Run tests
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.out
+          retention-days: 7
+
+  # -------------------------------------------------------
+  # Job 2: Build & push the backend Docker image (main only)
+  # -------------------------------------------------------
+  docker-build-push-backend:
+    name: Build and Push Backend Docker Image
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_digest: ${{ steps.build-push.outputs.digest }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.BACKEND_IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push backend image
+        id: build-push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # -------------------------------------------------------
+  # Job 3: Trigger the frontend CI/CD pipeline (main only)
+  # Requires a repository secret named FRONTEND_DEPLOY_PAT
+  # containing a GitHub Personal Access Token with
+  # `repo` scope on the personal-vault-frontend repository.
+  # -------------------------------------------------------
+  trigger-frontend-build:
+    name: Trigger Frontend Build and Deploy
+    runs-on: ubuntu-latest
+    needs: docker-build-push-backend
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions: {}
+    steps:
+      - name: Dispatch build event to frontend repository
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.FRONTEND_DEPLOY_PAT }}
+          script: |
+            await github.rest.repos.createDispatchEvent({
+              owner: context.repo.owner,
+              repo: 'personal-vault-frontend',
+              event_type: 'backend-updated',
+              client_payload: {
+                backend_image: '${{ env.BACKEND_IMAGE }}:latest',
+                backend_sha: context.sha,
+                backend_ref: context.ref
+              }
+            });
+            core.info('Successfully dispatched build event to personal-vault-frontend');
