@@ -1,0 +1,14 @@
+# Environment variables - never commit secrets
+.env
+
+# Go build artifacts
+personal-vault-backend
+go-mongo-project
+*.exe
+
+# IDE and OS files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store

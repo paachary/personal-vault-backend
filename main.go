@@ -3,6 +3,8 @@ package main
 import (
 	"go-mongo-project/db"
 	"go-mongo-project/routes"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -21,16 +23,29 @@ func main() {
 
 	server := gin.Default()
 	gin.SetMode(gin.ReleaseMode)
-	config := cors.DefaultConfig()
-	// config.AllowAllOrigins = true
-	config.AllowOrigins = []string{"http://localhost:5173"}
-	config.AllowMethods = []string{"POST", "GET", "PUT", "DELETE", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Content-Type", "Authorization", "Accept", "User-Agent", "Cache-Control", "Pragma", "Credential"}
-	config.ExposeHeaders = []string{"Content-Length"}
-	config.AllowCredentials = true
-	config.MaxAge = 12 * time.Hour
+	corsConfig := cors.DefaultConfig()
 
-	server.Use(cors.New(config))
+	allowedOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
+	if allowedOrigins != "" {
+		rawOrigins := strings.Split(allowedOrigins, ",")
+		origins := make([]string, 0, len(rawOrigins))
+		for _, o := range rawOrigins {
+			if trimmed := strings.TrimSpace(o); trimmed != "" {
+				origins = append(origins, trimmed)
+			}
+		}
+		corsConfig.AllowOrigins = origins
+	} else {
+		corsConfig.AllowOrigins = []string{"http://localhost:3007"}
+	}
+
+	corsConfig.AllowMethods = []string{"POST", "GET", "PUT", "DELETE", "OPTIONS"}
+	corsConfig.AllowHeaders = []string{"Origin", "Content-Type", "Authorization", "Accept", "User-Agent", "Cache-Control", "Pragma", "Credential"}
+	corsConfig.ExposeHeaders = []string{"Content-Length"}
+	corsConfig.AllowCredentials = true
+	corsConfig.MaxAge = 12 * time.Hour
+
+	server.Use(cors.New(corsConfig))
 
 	routes.RegisterRoutes(server)
 
