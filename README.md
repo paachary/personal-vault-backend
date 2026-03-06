@@ -36,8 +36,8 @@ A RESTful API backend built with Go, Gin, and MongoDB for securely managing pers
 1. **Clone the repository**
 
     ```bash
-    git clone https://github.com/paachary/go-mongo-project.git
-    cd go-mongo-project
+    git clone https://github.com/paachary/personal-vault-backend.git
+    cd personal-vault-backend
     ```
 
 2. **Install dependencies**
@@ -90,8 +90,8 @@ The base URL is `http://localhost:8080`.
 
 | Method | Endpoint         | Auth Required | Description                              |
 | ------ | ---------------- | ------------- | ---------------------------------------- |
-| POST   | `/register-user` | No            | Register a new user                      |
-| POST   | `/login`         | No            | Log in and receive a JWT                 |
+| POST   | `/register-user` | No            | Register a new user (password min 8 chars) |
+| POST   | `/login`         | No            | Log in and receive a JWT (expires in 2 hours) |
 | POST   | `/request-mfa`   | No            | Generate and store a 6-digit MFA code    |
 | POST   | `/verify-mfa`    | No            | Verify a previously generated MFA code  |
 
@@ -212,7 +212,7 @@ Authorization: Bearer <token>
 
 **Request body fields:** `bank_name`, `customer_id`, `user_id`, `login_password`, `transaction_password`, `mobile_login_pin`, `mobile_transaction_pin`
 
-> **Note:** A unique `id` (UUID) is auto-generated when adding a bank record. Use this `id` field when updating or deleting.
+> **Note:** A unique `id` (deterministic hash derived from `bank_name`, `user_id`, and `customer_id`) is auto-generated when adding a bank record. Use this `id` field when updating or deleting.
 
 ---
 
@@ -279,7 +279,7 @@ Authorization: Bearer <token>
 ## Project Structure
 
 ```
-go-mongo-project/
+personal-vault-backend/
 ├── apis/               # HTTP handler functions for each resource
 │   ├── aadhaar.go
 │   ├── all-details.go
